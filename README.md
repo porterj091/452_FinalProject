@@ -1,5 +1,9 @@
 # 452_FinalProject
 
+## Setup  
+1. ```npm install```  
+2. ```pip install websocket-client```
+
 To run server  
 ```npm start```  
 
@@ -8,6 +12,7 @@ To run client
 
 
 ### WebSocket info  
+```npm install```  
 https://github.com/websockets/ws
 
 ### For client   
