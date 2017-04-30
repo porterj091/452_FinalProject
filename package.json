@@ -1,0 +1,23 @@
+{
+  "name": "452_finalproject",
+  "version": "1.0.0",
+  "description": "A cryptographically secure chat application",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/porterj091/452_FinalProject.git"
+  },
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/porterj091/452_FinalProject/issues"
+  },
+  "homepage": "https://github.com/porterj091/452_FinalProject#readme",
+  "dependencies": {
+    "ws": "^2.3.1"
+  }
+}
