@@ -9,6 +9,25 @@ var ws = new WebSocketServer({
     port: port
 });
 
+var registeredUsers = [{
+        // password: password
+        username: 'joseph',
+        password: '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8'
+    },
+    { // password: password1
+        username: 'luis',
+        password: '0b14d501a594442a01c6859541bcb3e8164d183d32937b851835442f69d5c94e'
+    },
+    { // password: password2
+        username: 'hayley',
+        password: '6cf615d5bcaac778352a8f1f3360d23f02f34ec182e259897fd6ce485d7870d4'
+    },
+    { // password: password3
+        username: 'kevin',
+        password: '5906ac361a137e2d286465cd6588ebb5ac3f5ae955001100bc41577c3d751764'
+    }
+];
+
 
 var clients = [];
 
@@ -19,9 +38,7 @@ ws.on('connection', function(socket) {
 
     socket.on('message', function(data) {
         if (data) {
-            var cipher = makeAESCipher('passwordpassword', 'E');
-            var encrypted = cipher.update(data, 'utf8');
-            encrypted += cipher.final('base64');
+            var encrypted = encryptAES('passwordpassword', data);
             console.log('Original message: ' + data);
             console.log('Encrypted message in base64: ' + encrypted);
             socket.send(encrypted);
@@ -31,14 +48,21 @@ ws.on('connection', function(socket) {
 
 
 // Need to recreate the cipher each time you want to encrypted or decrypt something
-function makeAESCipher(sessionKey, mode) {
+function encryptAES(sessionKey, data) {
+    var encipher = crypto.createCipheriv('aes-128-ecb', sessionKey, '');
+    var encryptdata = encipher.update(data, 'utf8', 'base64');
 
-    // For some reason need an iv although ECB doesn't use it
-    if (mode === 'E') {
-        return crypto.createCipheriv('AES-128-ECB', sessionKey, '');
-    } else if (mode === 'D') {
-        return crypto.createDecipheriv('AES-128-ECB', sessionKey, '');
-    } else {
-        throw new Error('Mode must be [E|D]');
-    }
+    encryptdata += encipher.final('base64');
+    //encode_encryptdata = new Buffer(encryptdata, 'binary').toString('base64');
+    return encryptdata;
+}
+
+function decryptAES(sessionKey, data) {
+    data = new Buffer(data, 'base64').toString('binary');
+
+    var decipher = crypto.createDecipheriv('aes-128-ecb', sessionKey, '');
+    var decoded = decipher.update(data, 'base64', 'utf8');
+
+    decoded += decipher.final('utf8');
+    return decoded;
 }
