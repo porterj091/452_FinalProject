@@ -10,6 +10,12 @@ To run server
 To run client  
 ```python client.py```  
 
+### Crytography stuff in nodejs  
+https://nodejs.org/api/crypto.html
+
+### Crytography stuff in python  
+
+
 
 ### WebSocket info  
 ```npm install```  
