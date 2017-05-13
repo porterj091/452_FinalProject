@@ -21,15 +21,6 @@ fs.readFile('./keys/server_private.pem', 'utf8', function(err, data) {
     server_private_key.importKey(data, 'private');
 });
 
-fs.readFile('./keys/server_private.pem', 'utf8', function(err, data) {
-    if (err) throw err;
-    //console.log(data);
-    server_private_key.importKey(data, 'private');
-});
-
-var clients_key = getClients_PublicKey('clients');
-
-
 
 var port = 3000;
 
@@ -41,27 +32,33 @@ var registeredUsers = [{
         // password: password
         username: 'joseph',
         password: '5e884898da28047151d0e56f8dc6292773603d0d6aabbdd62a11ef721d1542d8',
-        online: false
+        online: false,
+        public_key: getClients_PublicKey('joseph')
     },
     { // password: password1
         username: 'luis',
         password: '0b14d501a594442a01c6859541bcb3e8164d183d32937b851835442f69d5c94e',
-        online: false
+        online: false,
+        public_key: getClients_PublicKey('luis')
     },
     { // password: password2
         username: 'hayley',
         password: '6cf615d5bcaac778352a8f1f3360d23f02f34ec182e259897fd6ce485d7870d4',
-        online: false
+        online: false,
+        public_key: getClients_PublicKey('hayley')
     },
     { // password: password3
         username: 'kevin',
         password: '5906ac361a137e2d286465cd6588ebb5ac3f5ae955001100bc41577c3d751764',
-        online: false
+        online: false,
+        public_key: getClients_PublicKey('kevin')
     }
 ];
 
 // Will hold all the messages sent
 var messages = [];
+
+var clients_inSession = [];
 
 console.log('#### Server Started ####');
 ws.on('connection', function(socket) {
@@ -75,26 +72,53 @@ ws.on('connection', function(socket) {
             var decryptedMessage = server_private_key.decrypt(msg.message, 'utf8');
             decryptedMessage = JSON.parse(decryptedMessage);
 
-            var socketMessage;
-
-            if (checkAuth(decryptedMessage)) { // User is allowed
-                socketMessage = clients_key.encrypt(JSON.stringify({
-                    status: 'ok',
-                    nonce: nonceModify(decryptedMessage.nonce)
-                }), 'base64');
-                socket.send(socketMessage);
-            } else {
-                socketMessage = clients_key.encrypt(JSON.stringify({
-                    status: 'bad',
-                    nonce: nonceModify(decryptedMessage.nonce)
-                }), 'base64');
-
-                socket.send(socketMessage);
-            }
+            socket.send(checkAuth(decryptedMessage))
 
 
         } else if (msg.type === 'message') {
-            socket.send(msg.message);
+            clients_inSession.forEach(function(clientSocket) {
+                clientSocket.send(msg.message);
+            });
+        } else if (msg.type === 'control') {
+            var decryptedMessage = server_private_key.decrypt(msg.message, 'utf8');
+            decryptedMessage = JSON.parse(decryptedMessage);
+
+            if (decryptedMessage.controlType === 'invite') {
+
+            } else if (decryptedMessage.controlType === 'showOnline') {
+                var online_users = [];
+                var public_key;
+
+                // Find the users that are online
+                registeredUsers.forEach(function(user) {
+                    if (user.online) {
+                        online_users.push(user.username);
+                    }
+
+                    if (user.username === decryptedMessage.userid) {
+                        public_key = user.public_key;
+                    }
+                });
+
+                ciphertext = public_key.encrypt(JSON.stringify({
+                    controlType: 'showOnline',
+                    users: online_users
+                }), 'base64');
+
+                socket.send(JSON.stringify({
+                    type: 'control',
+                    message: ciphertext
+                }));
+
+            } else if (decryptedMessage.controlType === 'quit') {
+                registeredUsers.forEach(function(user) {
+                    if (user.username === decryptedMessage.userid) {
+                        user.online = false;
+                    }
+                });
+            } else {
+                console.log('### Invalid Control Type:' + decryptedMessage.controlType + '###');
+            }
         }
         /*if (data) {
             var encrypted = encryptAES('passwordpassword', data);
@@ -127,21 +151,28 @@ function decryptAES(sessionKey, data) {
 }
 
 function checkAuth(attempt) {
-    var authenticated = false;
+    var message = 'Incorrect Login';
     // Make sure that the messages contains the correct fields
     if (!attempt.userid && !attempt.password) {
-        return authenticated;
+        message = 'Protocol not followed';
+        return message;
     }
 
     // Find if the username and password are within the registeredUsers
     registeredUsers.forEach(function(user) {
-        if ((user.username === attempt.userid) && (user.password === attempt.password) && !user.online) {
-            user.online = true;
-            authenticated = true;
+        if ((user.username === attempt.userid) && (user.password === attempt.password)) {
+            if (user.online) {
+                message = 'Already logged in';
+            } else {
+                user.online = true;
+                authenticated = true;
+                message = user.public_key.encrypt(JSON.stringify({
+                    nonce: nonceModify(attempt.nonce)
+                }), 'base64');
+            }
         }
     });
-
-    return authenticated;
+    return message;
 }
 
 function nonceModify(nonce) {

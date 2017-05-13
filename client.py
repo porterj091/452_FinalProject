@@ -19,6 +19,9 @@ ws = websocket.create_connection('ws://localhost:3000')
 userid = ''
 password = ''
 quitting = False
+inSession = False
+
+AES_SessionKey = ''
 
 def login():
     ''' prompt the user for authentication '''
@@ -34,6 +37,24 @@ def padAESMessage(m):
     while(len(m) % 16 != 0):
         m += "^"
 
+def encryptAES(plaintext):
+    ''' Encrypt the plaintext with a AES session key '''
+
+def decryptAES(ciphertext):
+    ''' Decrypt the ciphertext with a AES session key '''
+
+def encryptServerRSAPublic(plaintext):
+    ''' Will encrypt the plaintext with the public key of the server '''
+    # Get the keys for the server
+    (public_key, private_key) = getKeyPair('./keys/server_public.pem', './keys/server_private.pem')
+
+    server_public_key_object = RSA.importKey(public_key)
+
+    # Create the ciphertext
+    cipher = PKCS1_OAEP.new(server_public_key_object)
+    ciphertext = cipher.encrypt(json.dumps(plaintext))
+    return ciphertext
+
 
 def authenticationProtocol():
     ''' Protocol used to init the connection between the server and the client '''
@@ -45,20 +66,7 @@ def authenticationProtocol():
 
     message = { 'userid': userid, 'password': password, 'nonce': rnd.encode('base64')}
 
-    # Get the keys for the client
-    (public_key, private_key) = getKeyPair('./keys/clients_public.pem', './keys/clients_private.pem')
-
-    clients_public_key_object = RSA.importKey(public_key)
-    clients_private_key_object = RSA.importKey(private_key)
-
-    # Get the keys for the server
-    (public_key, private_key) = getKeyPair('./keys/server_public.pem', './keys/server_private.pem')
-
-    server_public_key_object = RSA.importKey(public_key)
-
-    # Create the ciphertext
-    cipher = PKCS1_OAEP.new(server_public_key_object)
-    ciphertext = cipher.encrypt(json.dumps(message))
+    ciphertext = encryptServerRSAPublic(message)
 
     # Message with header and encrypted data
     encrypted_message = { 'type': 'auth', 'message': ciphertext.encode('base64')}
@@ -67,18 +75,39 @@ def authenticationProtocol():
     # Send the server rsa encrypted message init the message
     ws.send(json.dumps(encrypted_message))
 
+
+    returnMessage = ws.recv()
+
+    try:
+        statusMessage = json.loads(decryptClientRSA(returnMessage))
+
+        if statusMessage['nonce'] == message['nonce'] + 'aa':
+            print('##### Sucessful Login #####')
+        else:
+            print('===== Nonce does not compute =====')
+            sys.exit(1)
+    except:
+        print(returnMessage)
+        sys.exit(1)
+
+
+def decryptClientRSA(ciphertext):
+    ''' Use the clients private key to decrypt the ciphertext '''
+    global userid, password
+    publicFilename = './keys/' + userid + '_public.pem'
+    privateFilename = './keys/' + userid + '_private.pem'
+
+    # Get the keys for the client
+    try:
+        (public_key, private_key) = getKeyPair(publicFilename, privateFilename)
+    except:
+        print('Could not find RSA key for that user')
+        sys.exit(1)
+
+    clients_public_key_object = RSA.importKey(public_key)
+    clients_private_key_object = RSA.importKey(private_key)
     clientCipher = PKCS1_OAEP.new(clients_private_key_object)
-
-    statusMessage = json.loads(clientCipher.decrypt(ws.recv().decode('base64')))
-
-    if statusMessage['status'] == 'bad':
-        print('========== Incorrect Login ===========')
-        sys.exit(1)
-    elif statusMessage['nonce'] == message['nonce'] + 'aa':
-        print('##### Sucessful Login #####')
-    else:
-        print('=========== Authentication Protocol not followed ============')
-        sys.exit(1)
+    return clientCipher.decrypt(ciphertext.decode('base64'))
 
 
 def showCommands():
@@ -87,7 +116,7 @@ def showCommands():
     print('Commands must be in front of text input!!!')
     print('\t$$showOnline: Will show users that are currently online')
     print('\t$$invite [users]: invite users to join your chat session')
-    print('\t$$quit: Exit the chat session')
+    print('\t$$quit: Exit the chat session and quit program\n')
 
 
 
@@ -104,52 +133,62 @@ def getKeyPair(keyfile_public, keyfile_private):
     return (public_key, private_key)
 
 
-def on_message(ws, message):
-    print('\t\t\t\t\t' +  message)
-
-def on_error(ws, error):
-    print error
-    sys.exit(1)
-
-def on_close(ws):
-    print '### Closing Down ###'
-
-def on_open(ws):
-    def run(*args):
-        while(True and quitting == False):
-            message = raw_input('Message: ')
-            ws.send(message)
-            time.sleep(0.3)
-
-    thread.start_new_thread(run, ())
-
 def sendMessages(*args):
-    global quitting
+    ''' Will handle the user input for messages '''
+    global quitting, inSession, userid, ws
     while(True and quitting == False):
         message = raw_input('Message: ')
 
         s_message = message.split(' ')
 
         if s_message[0] == '$$quit':
-            print ('Quiting the chat session')
+            print ('===== Quiting the chat session =====')
             quitting = True
+            message = { 'controlType': 'quit', 'userid': userid }
+            ciphertext = encryptServerRSAPublic(message).encode('base64')
+            ws.send(json.dumps({'type': 'control', 'message': ciphertext}))
+        elif s_message[0] == '$$invite':
+            print ('Inviting users to chat')
 
-        ws.send(json.dumps({'type': 'message', 'message': message}))
+        elif s_message[0] == '$$showOnline':
+            message = { 'controlType': 'showOnline', 'userid': userid }
+            ciphertext = encryptServerRSAPublic(message).encode('base64')
+            ws.send(json.dumps({'type': 'control', 'message': ciphertext}));
+        elif inSession is True:
+            ws.send(json.dumps({'type': 'message', 'message': message}))
+        else:
+            print ('\n#### Not in a Chat Session either wait to be invited or invite others ####\n')
         time.sleep(0.3)
-    else:
-        ws.close()
-        sys.exit(0)
+    '''else:
+        thread.exit()'''
 
 def recvMessages(*args):
-    global quitting
+    ''' Will be listening for messages '''
+    global quitting, inSession, ws
     while(True and quitting == False):
-        message = ws.recv()
-        print(message)
-    else:
-        ws.close()
-        sys.exit(0)
+        try:
+            message = json.loads(ws.recv())
+
+            # All control messages will be using RSA encryption
+            if message['type'] == 'control':
+                server_Message = json.loads(decryptClientRSA(message['message']))
+                if server_Message['controlType'] == 'showOnline':
+                    printVal = '\n#### Users Online:'
+                    for name in server_Message['users']:
+                        printVal += ' ' + name
+                    printVal += ' ####\n'
+                    print printVal
+            elif message['type'] == 'message':  # Normal messages uses AES session key
+                print 'message'
+            else:
+                print ('===== Dont understand that message type =====')
+        except:
+            print ('JSON loading failure')
+    '''else:
+        thread.exit()'''
 
 def messageService():
+    ''' Messaging application after user has invited the users needed '''
     global ws
 
     # Start threads to handle input and output
@@ -159,6 +198,10 @@ def messageService():
     # Stall the main thread from doing anything
     while(True and quitting == False):
         pass
+    else:
+        time.sleep(1)
+        ws.close()
+        sys.exit(0)
 
 
 
