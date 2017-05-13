@@ -18,6 +18,7 @@
   },
   "homepage": "https://github.com/porterj091/452_FinalProject#readme",
   "dependencies": {
+    "node-rsa": "^0.4.2",
     "ws": "^2.3.1"
   }
 }

@@ -2,6 +2,26 @@ var WebSocket = require('ws');
 var WebSocketServer = WebSocket.Server;
 
 var crypto = require('crypto');
+var NodeRSA = require('node-rsa');
+var fs = require('fs');
+
+var server_public_key = new NodeRSA();
+var server_private_key = new NodeRSA();
+
+
+fs.readFile('./keys/server_public.pem', 'utf8', function(err, data) {
+    if (err) throw err;
+    console.log(data);
+    server_public_key.importKey(data, 'public');
+});
+
+fs.readFile('./keys/server_private.pem', 'utf8', function(err, data) {
+    if (err) throw err;
+    console.log(data);
+    server_private_key.importKey(data, 'private');
+});
+
+
 
 var port = 3000;
 
@@ -37,12 +57,17 @@ ws.on('connection', function(socket) {
 
 
     socket.on('message', function(data) {
-        if (data) {
+        msg = JSON.parse(data);
+
+        if (msg.type === 'auth') {
+
+        }
+        /*if (data) {
             var encrypted = encryptAES('passwordpassword', data);
             console.log('Original message: ' + data);
             console.log('Encrypted message in base64: ' + encrypted);
             socket.send(encrypted);
-        }
+        }*/
     });
 });
 
