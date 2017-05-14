@@ -8,6 +8,8 @@ var fs = require('fs');
 var server_public_key = new NodeRSA();
 var server_private_key = new NodeRSA();
 
+var AES_SessionKey = '';
+
 
 fs.readFile('./keys/server_public.pem', 'utf8', function(err, data) {
     if (err) throw err;
@@ -67,23 +69,68 @@ ws.on('connection', function(socket) {
 
     socket.on('message', function(data) {
         msg = JSON.parse(data);
+        console.log(msg);
 
         if (msg.type === 'auth') {
             var decryptedMessage = server_private_key.decrypt(msg.message, 'utf8');
             decryptedMessage = JSON.parse(decryptedMessage);
+            socket.userid = decryptedMessage.userid;
 
             socket.send(checkAuth(decryptedMessage))
 
 
         } else if (msg.type === 'message') {
-            clients_inSession.forEach(function(clientSocket) {
-                clientSocket.send(msg.message);
+            ws.clients.forEach(function(clientSocket) {
+                clients_inSession.forEach(function(user) {
+                    if (clientSocket.userid === user.username) {
+                        clientSocket.send(JSON.stringify(msg));
+                    }
+                });
             });
         } else if (msg.type === 'control') {
             var decryptedMessage = server_private_key.decrypt(msg.message, 'utf8');
             decryptedMessage = JSON.parse(decryptedMessage);
 
             if (decryptedMessage.controlType === 'invite') {
+                console.log(decryptedMessage);
+                var usersNames = [];
+                var usersNot = [];
+
+                registeredUsers.forEach(function(user) {
+                    if (user.online && decryptedMessage.message.includes(user.username) || user.username === decryptedMessage.requestingid) {
+                        clients_inSession.push(user)
+                        usersNames.push(user.username);
+
+                    } else if (decryptedMessage.message.includes(user.username)) {
+                        usersNot.push(user.username);
+                    }
+                });
+
+                console.log(usersNames);
+
+                console.log(clients_inSession);
+                AES_SessionKey = crypto.randomBytes(16);
+                AES_SessionKey = AES_SessionKey.toString('base64');
+                console.log(AES_SessionKey);
+
+                ws.clients.forEach(function(clientSocket) {
+                    clients_inSession.forEach(function(user) {
+                        if (clientSocket.userid === user.username) {
+                            ciphertext = user.public_key.encrypt(JSON.stringify({
+                                controlType: 'invite',
+                                usersInSession: usersNames,
+                                userNotInSession: usersNot,
+                                sessionKey: AES_SessionKey,
+                                requestingUser: decryptedMessage.requestingid
+                            }), 'base64');
+
+                            clientSocket.send(JSON.stringify({
+                                type: 'control',
+                                message: ciphertext
+                            }));
+                        }
+                    });
+                });
 
             } else if (decryptedMessage.controlType === 'showOnline') {
                 var online_users = [];

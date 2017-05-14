@@ -21,7 +21,7 @@ password = ''
 quitting = False
 inSession = False
 
-AES_SessionKey = ''
+AES_Obj = ''
 
 def login():
     ''' prompt the user for authentication '''
@@ -36,12 +36,29 @@ def padAESMessage(m):
     # This is the message padding in 16 byte lengths
     while(len(m) % 16 != 0):
         m += "^"
+    return m
+
+def removePadding(decryptedText):
+    ''' Will remove the ^ which act as padding '''
+    found = False
+    for i in range(len(decryptedText)):
+        if found is True:
+            pass
+        elif decryptedText[i] is '^':
+            decryptedText = decryptedText[:i]
+            i = len(decryptedText) + 1
+            found = True
+    return decryptedText
 
 def encryptAES(plaintext):
     ''' Encrypt the plaintext with a AES session key '''
+    global AES_Obj
+    return AES_Obj.encrypt(padAESMessage(plaintext)).encode('base64')
 
 def decryptAES(ciphertext):
     ''' Decrypt the ciphertext with a AES session key '''
+    global AES_Obj
+    return removePadding(AES_Obj.decrypt(ciphertext.decode('base64')))
 
 def encryptServerRSAPublic(plaintext):
     ''' Will encrypt the plaintext with the public key of the server '''
@@ -53,7 +70,7 @@ def encryptServerRSAPublic(plaintext):
     # Create the ciphertext
     cipher = PKCS1_OAEP.new(server_public_key_object)
     ciphertext = cipher.encrypt(json.dumps(plaintext))
-    return ciphertext
+    return ciphertext.encode('base64')
 
 
 def authenticationProtocol():
@@ -69,7 +86,7 @@ def authenticationProtocol():
     ciphertext = encryptServerRSAPublic(message)
 
     # Message with header and encrypted data
-    encrypted_message = { 'type': 'auth', 'message': ciphertext.encode('base64')}
+    encrypted_message = { 'type': 'auth', 'message': ciphertext}
 
 
     # Send the server rsa encrypted message init the message
@@ -135,8 +152,9 @@ def getKeyPair(keyfile_public, keyfile_private):
 
 def sendMessages(*args):
     ''' Will handle the user input for messages '''
-    global quitting, inSession, userid, ws
+    global quitting, inSession, userid, ws, AES_Obj
     while(True and quitting == False):
+        message = ''
         message = raw_input('Message: ')
 
         s_message = message.split(' ')
@@ -145,17 +163,20 @@ def sendMessages(*args):
             print ('===== Quiting the chat session =====')
             quitting = True
             message = { 'controlType': 'quit', 'userid': userid }
-            ciphertext = encryptServerRSAPublic(message).encode('base64')
+            ciphertext = encryptServerRSAPublic(message)
             ws.send(json.dumps({'type': 'control', 'message': ciphertext}))
         elif s_message[0] == '$$invite':
-            print ('Inviting users to chat')
-
+            message = { 'controlType': 'invite', 'message': s_message[1:], 'requestingid': userid}
+            ciphertext = encryptServerRSAPublic(message)
+            ws.send(json.dumps({'type': 'control', 'message': ciphertext}))
         elif s_message[0] == '$$showOnline':
             message = { 'controlType': 'showOnline', 'userid': userid }
-            ciphertext = encryptServerRSAPublic(message).encode('base64')
+            ciphertext = encryptServerRSAPublic(message)
             ws.send(json.dumps({'type': 'control', 'message': ciphertext}));
         elif inSession is True:
-            ws.send(json.dumps({'type': 'message', 'message': message}))
+            message = { 'message': message, 'userid': userid}
+            ciphertext = encryptAES(json.dumps(message))
+            ws.send(json.dumps({'type': 'message', 'message': ciphertext}))
         else:
             print ('\n#### Not in a Chat Session either wait to be invited or invite others ####\n')
         time.sleep(0.3)
@@ -164,7 +185,7 @@ def sendMessages(*args):
 
 def recvMessages(*args):
     ''' Will be listening for messages '''
-    global quitting, inSession, ws
+    global quitting, inSession, ws, AES_Obj, userid
     while(True and quitting == False):
         try:
             message = json.loads(ws.recv())
@@ -178,14 +199,36 @@ def recvMessages(*args):
                         printVal += ' ' + name
                     printVal += ' ####\n'
                     print printVal
+                elif server_Message['controlType'] == 'invite':
+                    print server_Message
+                    AES_Obj = AES.new(server_Message['sessionKey'].decode('base64'), AES.MODE_ECB)
+                    print('\n### Joining Chat session!! ###\n')
+                    printVal = 'UsersInSession:'
+                    for name in server_Message['usersInSession']:
+                        printVal += ' ' + name
+                    print (printVal)
+                    inSession = True
+
+                    if server_Message['requestingUser'] == userid:
+                        printVal = 'Users you invited not in session:'
+                        for name in server_Message['userNotInSession']:
+                            printVal += ' ' + name
+                        print (printVal)
             elif message['type'] == 'message':  # Normal messages uses AES session key
-                print 'message'
+                plaintext = json.loads(decryptAES(message['message']))
+                printVal = ''
+                if plaintext['userid'] == userid:
+                    printVal = plaintext['message']
+                else:
+                    printVal = '\t\t' + plaintext['userid'] + ': ' + plaintext['message']
+                print (printVal)
+
             else:
                 print ('===== Dont understand that message type =====')
         except:
             print ('JSON loading failure')
-    '''else:
-        thread.exit()'''
+        '''else:
+            thread.exit()'''
 
 def messageService():
     ''' Messaging application after user has invited the users needed '''
@@ -207,8 +250,14 @@ def messageService():
 
 aesObj = AES.new('passwordpassword', AES.MODE_ECB)
 if __name__ == '__main__':
+    # User must login before chat happens
     login()
+
+    # Authenticate this user with the server
     authenticationProtocol()
+
+    # Show the user all the commands that are possible
     showCommands()
+
+    # Start the chat application
     messageService()
-    ws.close()
