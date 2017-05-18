@@ -191,7 +191,6 @@ def recvMessages(*args):
     while(True and quitting == False):
         try:
             message = json.loads(ws.recv())
-            print message
             # All control messages will be using RSA encryption
             if message['type'] == 'control':
                 server_Message = json.loads(decryptClientRSA(message['message']))

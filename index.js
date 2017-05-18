@@ -161,6 +161,7 @@ ws.on('connection', function(socket) {
                 registeredUsers.forEach(function(user) {
                     if (user.username === decryptedMessage.userid) {
                         user.online = false;
+                        socket.userid = '';
                     }
                 });
             } else {
