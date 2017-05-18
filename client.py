@@ -20,6 +20,7 @@ userid = ''
 password = ''
 quitting = False
 inSession = False
+messageid = 0
 
 AES_Obj = ''
 
@@ -152,7 +153,7 @@ def getKeyPair(keyfile_public, keyfile_private):
 
 def sendMessages(*args):
     ''' Will handle the user input for messages '''
-    global quitting, inSession, userid, ws, AES_Obj
+    global quitting, inSession, userid, ws, AES_Obj, messageid
     while(True and quitting == False):
         message = ''
         message = raw_input('Message: ')
@@ -174,7 +175,7 @@ def sendMessages(*args):
             ciphertext = encryptServerRSAPublic(message)
             ws.send(json.dumps({'type': 'control', 'message': ciphertext}));
         elif inSession is True:
-            message = { 'message': message, 'userid': userid}
+            message = { 'message': message, 'userid': userid, 'messageid': messageid}
             ciphertext = encryptAES(json.dumps(message))
             ws.send(json.dumps({'type': 'message', 'message': ciphertext}))
         else:
@@ -185,11 +186,11 @@ def sendMessages(*args):
 
 def recvMessages(*args):
     ''' Will be listening for messages '''
-    global quitting, inSession, ws, AES_Obj, userid
+    global quitting, inSession, ws, AES_Obj, userid, messageid
+
     while(True and quitting == False):
         try:
             message = json.loads(ws.recv())
-
             # All control messages will be using RSA encryption
             if message['type'] == 'control':
                 server_Message = json.loads(decryptClientRSA(message['message']))
@@ -200,28 +201,44 @@ def recvMessages(*args):
                     printVal += ' ####\n'
                     print printVal
                 elif server_Message['controlType'] == 'invite':
-                    print server_Message
-                    AES_Obj = AES.new(server_Message['sessionKey'].decode('base64'), AES.MODE_ECB)
-                    print('\n### Joining Chat session!! ###\n')
-                    printVal = 'UsersInSession:'
-                    for name in server_Message['usersInSession']:
-                        printVal += ' ' + name
-                    print (printVal)
-                    inSession = True
-
-                    if server_Message['requestingUser'] == userid:
-                        printVal = 'Users you invited not in session:'
-                        for name in server_Message['userNotInSession']:
+                    if not inSession:
+                    # print server_Message
+                        AES_Obj = AES.new(server_Message['sessionKey'].decode('base64'), AES.MODE_ECB)
+                        print('\n### Joining Chat session!! ###\n')
+                        printVal = 'UsersInSession:'
+                        for name in server_Message['usersInSession']:
                             printVal += ' ' + name
                         print (printVal)
+                        inSession = True
+
+                        if server_Message['requestingUser'] == userid:
+                            allInSession = True
+                            printVal = 'Users you invited not in session:'
+                            for name in server_Message['userNotInSession']:
+                                printVal += ' ' + name
+                                allInSession = False
+                            if allInSession:
+                                print('\n All invited users are in session\n')
+                            else:
+                                print (printVal)
+                        else:
+                            printVal = 'Message: '
+                            print printVal ,
             elif message['type'] == 'message':  # Normal messages uses AES session key
                 plaintext = json.loads(decryptAES(message['message']))
                 printVal = ''
-                if plaintext['userid'] == userid:
-                    printVal = plaintext['message']
-                else:
-                    printVal = '\t\t' + plaintext['userid'] + ': ' + plaintext['message']
-                print (printVal)
+
+                #print plaintext['messageid'], str(messageid)
+                if plaintext['messageid']== messageid:
+                    messageid += 1
+                    if plaintext['userid'] == userid:
+                        printVal = ''
+                        # printVal = plaintext['message']
+                    else:
+                        printVal = '\t\t' + plaintext['userid'] + ': ' + plaintext['message']
+                        print printVal
+                        sys.stdout.write('Message: ')
+                        sys.stdout.flush()
 
             else:
                 print ('===== Dont understand that message type =====')
