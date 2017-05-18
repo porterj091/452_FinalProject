@@ -1,5 +1,5 @@
 '''
-    Author: Joseph Porter, Luis, Hayley, kevin
+    Author: Joseph Porter, Luis Covarrubias, Hayley Ferr, Kevin Ochoa
     Description: Client side code for a secure chat application
 '''
 import websocket
@@ -191,6 +191,7 @@ def recvMessages(*args):
     while(True and quitting == False):
         try:
             message = json.loads(ws.recv())
+            print message
             # All control messages will be using RSA encryption
             if message['type'] == 'control':
                 server_Message = json.loads(decryptClientRSA(message['message']))
