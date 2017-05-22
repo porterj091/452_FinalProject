@@ -13,6 +13,7 @@ import json
 import sys
 import thread
 import time
+from blessings import Terminal
 
 
 ws = websocket.create_connection('ws://localhost:3000')
@@ -21,6 +22,7 @@ password = ''
 quitting = False
 inSession = False
 messageid = 0
+term = Terminal()
 
 AES_Obj = ''
 
@@ -236,7 +238,7 @@ def recvMessages(*args):
                         # printVal = plaintext['message']
                     else:
                         printVal = '\t\t' + plaintext['userid'] + ': ' + plaintext['message']
-                        print printVal
+                        print term.red(printVal)
                         sys.stdout.write('Message: ')
                         sys.stdout.flush()
 
